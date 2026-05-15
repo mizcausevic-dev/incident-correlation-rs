@@ -42,3 +42,13 @@ jobs:
 
       - name: Doc tests
         run: cargo test --doc
+
+      # Exercise the optional audit-stream producer too, so it doesn't rot
+      # in the default build. Only on stable to keep the matrix fast.
+      - name: Clippy (audit-stream feature)
+        if: matrix.toolchain == 'stable'
+        run: cargo clippy --features audit-stream --all-targets -- -Dwarnings
+
+      - name: Test (audit-stream feature)
+        if: matrix.toolchain == 'stable'
+        run: cargo test --features audit-stream --all-targets

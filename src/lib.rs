@@ -53,6 +53,11 @@ pub mod graph;
 pub mod model;
 pub mod plan;
 
+/// Optional audit-stream-py producer. Gated behind the `audit-stream`
+/// Cargo feature so the core graph crate stays sync and HTTP-free.
+#[cfg(feature = "audit-stream")]
+pub mod audit_stream;
+
 pub use correlator::IncidentCorrelator;
 pub use error::CorrelationError;
 pub use graph::{SuiteEdge, SuiteGraph, SuiteNode};
