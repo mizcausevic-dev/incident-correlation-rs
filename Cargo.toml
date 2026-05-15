@@ -2,7 +2,7 @@
 name        = "incident-correlation"
 version     = "0.1.1"
 edition     = "2021"
-rust-version = "1.85"
+rust-version = "1.86"
 description = "Walks the Kinetic Gain Protocol Suite graph (AEO + agent-cards + tool-cards + decision-cards) starting from an AI Incident Card and emits a structured remediation plan. Optional audit-stream-py integration via the `audit-stream` feature."
 license     = "MIT"
 repository  = "https://github.com/mizcausevic-dev/incident-correlation-rs"
