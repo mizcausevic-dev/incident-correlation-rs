@@ -21,7 +21,9 @@ struct EnvGuard {
 
 impl EnvGuard {
     fn lock() -> Self {
-        let lock = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let lock = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         std::env::remove_var("AUDIT_STREAM_URL");
         std::env::remove_var("AUDIT_STREAM_TIMEOUT_S");
         EnvGuard { _lock: lock }
