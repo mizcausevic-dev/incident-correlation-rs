@@ -9,7 +9,7 @@ repository  = "https://github.com/mizcausevic-dev/incident-correlation-rs"
 homepage    = "https://kineticgain.com/"
 documentation = "https://docs.rs/incident-correlation"
 readme      = "README.md"
-keywords    = ["ai-incidents", "decision-intelligence", "graph", "kinetic-gain", "remediation"]
+keywords    = ["ai-incidents", "decision-intel", "graph", "kinetic-gain", "remediation"]
 categories  = ["data-structures", "asynchronous"]
 authors     = ["Miz Causevic <miz@kineticgain.com>"]
 
