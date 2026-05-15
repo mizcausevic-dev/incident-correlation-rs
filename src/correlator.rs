@@ -75,6 +75,84 @@ impl IncidentCorrelator {
             summary,
         })
     }
+
+    /// Build a remediation plan **and** fire an `incident_correlated` event
+    /// to the audit-stream spine. Same semantics as [`correlate`] — the emit
+    /// is best-effort and never blocks the result. Use this when you want
+    /// AI incidents to land in the same hash-chained log that holds the
+    /// rest of the suite's governance events.
+    ///
+    /// Available only with the `audit-stream` feature.
+    #[cfg(feature = "audit-stream")]
+    pub async fn correlate_with_audit(
+        &self,
+        client: &reqwest::Client,
+        graph: &SuiteGraph,
+        incident: &IncidentCard,
+    ) -> Result<RemediationPlan, CorrelationError> {
+        let outcome = self.correlate(graph, incident);
+        match &outcome {
+            Ok(plan) => {
+                let max_urgency = max_urgency_label(&plan.affected_nodes);
+                crate::audit_stream::emit(
+                    client,
+                    "incident_correlated",
+                    serde_json::json!({
+                        "incident_id": plan.incident_id,
+                        "severity": incident.severity,
+                        "affected_documents": incident.affected_documents,
+                        "affected_node_count": plan.affected_nodes.len(),
+                        "max_urgency": max_urgency,
+                        "has_page": plan.has_page(),
+                        "summary": plan.summary,
+                    }),
+                )
+                .await;
+            }
+            Err(err) => {
+                crate::audit_stream::emit(
+                    client,
+                    "incident_correlation_failed",
+                    serde_json::json!({
+                        "incident_id": incident.incident_id,
+                        "severity": incident.severity,
+                        "reason": err.to_string(),
+                    }),
+                )
+                .await;
+            }
+        }
+        outcome
+    }
+}
+
+/// Highest urgency seen across the affected nodes, rendered as the
+/// `snake_case` Serde repr from [`Urgency`]. Stable string format the
+/// audit log can index on.
+#[cfg(feature = "audit-stream")]
+fn max_urgency_label(nodes: &[AffectedNode]) -> &'static str {
+    let mut max = crate::plan::Urgency::Low;
+    for n in nodes {
+        if urgency_rank(n.urgency) > urgency_rank(max) {
+            max = n.urgency;
+        }
+    }
+    match max {
+        crate::plan::Urgency::Low => "low",
+        crate::plan::Urgency::Normal => "normal",
+        crate::plan::Urgency::High => "high",
+        crate::plan::Urgency::Critical => "critical",
+    }
+}
+
+#[cfg(feature = "audit-stream")]
+fn urgency_rank(u: crate::plan::Urgency) -> u8 {
+    match u {
+        crate::plan::Urgency::Low => 0,
+        crate::plan::Urgency::Normal => 1,
+        crate::plan::Urgency::High => 2,
+        crate::plan::Urgency::Critical => 3,
+    }
 }
 
 /// Severity bucket the urgency table uses.
