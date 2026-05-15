@@ -125,7 +125,9 @@ mod tests {
 
     #[test]
     fn disabled_when_unset() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         assert!(!is_enabled());
         assert!(base_url().is_none());
@@ -133,7 +135,9 @@ mod tests {
 
     #[test]
     fn disabled_when_blank() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         env::set_var("AUDIT_STREAM_URL", "   ");
         assert!(!is_enabled());
@@ -142,7 +146,9 @@ mod tests {
 
     #[test]
     fn enabled_with_value() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         env::set_var("AUDIT_STREAM_URL", "http://audit.local:8093");
         assert!(is_enabled());
@@ -152,7 +158,9 @@ mod tests {
 
     #[test]
     fn trailing_slash_stripped() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         env::set_var("AUDIT_STREAM_URL", "http://audit.local:8093/");
         assert_eq!(base_url().unwrap(), "http://audit.local:8093");
@@ -161,14 +169,18 @@ mod tests {
 
     #[test]
     fn timeout_default() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         assert_eq!(timeout(), Duration::from_secs_f64(DEFAULT_TIMEOUT_S));
     }
 
     #[test]
     fn timeout_override() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         env::set_var("AUDIT_STREAM_TIMEOUT_S", "5.0");
         assert_eq!(timeout(), Duration::from_secs_f64(5.0));
@@ -177,7 +189,9 @@ mod tests {
 
     #[test]
     fn timeout_bad_value_falls_back() {
-        let _l = ENV_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         reset_env();
         env::set_var("AUDIT_STREAM_TIMEOUT_S", "not-a-number");
         assert_eq!(timeout(), Duration::from_secs_f64(DEFAULT_TIMEOUT_S));
