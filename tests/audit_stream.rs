@@ -215,6 +215,8 @@ async fn correlate_with_audit_emits_incident_correlated() {
     assert_eq!(body["payload"]["max_urgency"], "critical");
     assert_eq!(body["payload"]["has_page"], true);
     assert!(body["payload"]["affected_node_count"].as_u64().unwrap() >= 1);
+    assert!(body["payload"].get("affected_documents").is_none());
+    assert!(body["payload"].get("summary").is_none());
 }
 
 #[tokio::test]
@@ -250,5 +252,34 @@ async fn correlate_with_audit_emits_failed_on_unknown_seed() {
     let body: Value = serde_json::from_slice(&recvd[0].body).unwrap();
     assert_eq!(body["kind"], "incident_correlation_failed");
     assert_eq!(body["source"], "incident-correlation");
-    assert!(body["payload"]["reason"].as_str().is_some());
+    assert_eq!(body["payload"]["reason_code"], "unknown_affected_node");
+    assert!(body["payload"].get("reason").is_none());
+    assert!(body["payload"].get("severity").is_none());
+}
+
+#[tokio::test]
+async fn correlate_with_audit_emits_redacted_error_for_invalid_severity() {
+    let _guard = EnvGuard::lock();
+    let server = MockServer::start().await;
+    std::env::set_var("AUDIT_STREAM_URL", server.uri());
+    Mock::given(method("POST"))
+        .and(path("/events"))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let g = tiny_graph();
+    let mut card = critical_card();
+    card.severity = "SECRET-IN-SEVERITY".into();
+    let client = reqwest::Client::new();
+    assert!(IncidentCorrelator
+        .correlate_with_audit(&client, &g, &card)
+        .await
+        .is_err());
+    let recvd = server.received_requests().await.unwrap();
+    assert_eq!(recvd.len(), 1);
+    let body: Value = serde_json::from_slice(&recvd[0].body).unwrap();
+    assert_eq!(body["payload"]["reason_code"], "invalid_severity");
+    assert!(!String::from_utf8_lossy(&recvd[0].body).contains("SECRET-IN-SEVERITY"));
 }

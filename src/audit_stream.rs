@@ -2,9 +2,8 @@
 //!
 //! When the `audit-stream` Cargo feature is enabled **and** the
 //! `AUDIT_STREAM_URL` env var is set, callers can fire one
-//! `incident_correlated` governance event per remediation plan they hand
-//! out — so AI incidents land in the same hash-chained log that holds the
-//! rest of the suite's governance events.
+//! `incident_correlated` event per remediation plan. Delivery is not proof
+//! that a destination stored or hash-chained the event.
 //!
 //! Same opt-in pattern as the Python producers (procurement-decision-api,
 //! aeo-validator-service, policy-as-code-engine, data-contract-registry).
@@ -13,8 +12,9 @@
 //! - `AUDIT_STREAM_URL`        — base URL, e.g. `http://audit.local:8093`
 //! - `AUDIT_STREAM_TIMEOUT_S`  — per-call timeout, default 2.5s
 //!
-//! Best-effort. Failures are logged to stderr and swallowed — an
-//! audit-stream outage must never block remediation.
+//! Best-effort. Failures are logged to stderr and swallowed. This is not a
+//! durable audit receipt: operators who require one must confirm acceptance
+//! with the audit service before treating a plan as recorded.
 //!
 //! # Example
 //!
@@ -52,7 +52,8 @@ pub fn is_enabled() -> bool {
     base_url().is_some()
 }
 
-/// Stripped audit-stream base URL, or `None` when disabled.
+/// Stripped HTTP(S) audit-stream base URL, or `None` when unset or invalid.
+/// URLs with embedded credentials, queries, or fragments are rejected.
 #[must_use]
 pub fn base_url() -> Option<String> {
     let raw = env::var("AUDIT_STREAM_URL").ok()?;
@@ -60,16 +61,26 @@ pub fn base_url() -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
+    let parsed = reqwest::Url::parse(trimmed).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return None;
+    }
     Some(trimmed.trim_end_matches('/').to_string())
 }
 
-/// Configured per-call timeout. Defaults to 2.5 seconds.
+/// Configured per-call timeout, clamped to 0.1–30 seconds. Defaults to 2.5 seconds.
 #[must_use]
 pub fn timeout() -> Duration {
     let secs = env::var("AUDIT_STREAM_TIMEOUT_S")
         .ok()
         .and_then(|raw| raw.trim().parse::<f64>().ok())
-        .map_or(DEFAULT_TIMEOUT_S, |v| v.max(0.1));
+        .filter(|v| v.is_finite())
+        .map_or(DEFAULT_TIMEOUT_S, |v| v.clamp(0.1, 30.0));
     Duration::from_secs_f64(secs)
 }
 
@@ -96,13 +107,10 @@ pub async fn emit(client: &reqwest::Client, kind: &str, payload: serde_json::Val
     match result {
         Ok(resp) if resp.status().is_success() => {}
         Ok(resp) => {
-            eprintln!(
-                "audit-stream emit failed (kind={kind}): HTTP {}",
-                resp.status()
-            );
+            eprintln!("audit-stream emit failed: HTTP {}", resp.status());
         }
-        Err(err) => {
-            eprintln!("audit-stream emit failed (kind={kind}): {err}");
+        Err(_) => {
+            eprintln!("audit-stream emit failed: request failed");
         }
     }
 }
@@ -196,5 +204,39 @@ mod tests {
         env::set_var("AUDIT_STREAM_TIMEOUT_S", "not-a-number");
         assert_eq!(timeout(), Duration::from_secs_f64(DEFAULT_TIMEOUT_S));
         env::remove_var("AUDIT_STREAM_TIMEOUT_S");
+    }
+
+    #[test]
+    fn timeout_nonfinite_value_falls_back_and_large_value_is_clamped() {
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reset_env();
+        env::set_var("AUDIT_STREAM_TIMEOUT_S", "NaN");
+        assert_eq!(timeout(), Duration::from_secs_f64(DEFAULT_TIMEOUT_S));
+        env::set_var("AUDIT_STREAM_TIMEOUT_S", "inf");
+        assert_eq!(timeout(), Duration::from_secs_f64(DEFAULT_TIMEOUT_S));
+        env::set_var("AUDIT_STREAM_TIMEOUT_S", "1e300");
+        assert_eq!(timeout(), Duration::from_secs(30));
+        reset_env();
+    }
+
+    #[test]
+    fn malformed_or_credentialed_url_is_disabled() {
+        let _l = ENV_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reset_env();
+        for url in [
+            "not-a-url",
+            "file:///tmp/audit",
+            "https://user:password@audit.example",
+            "https://audit.example/?token=secret",
+            "https://audit.example/#fragment",
+        ] {
+            env::set_var("AUDIT_STREAM_URL", url);
+            assert!(!is_enabled(), "{url} must not enable audit emission");
+        }
+        reset_env();
     }
 }

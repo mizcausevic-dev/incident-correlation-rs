@@ -30,7 +30,7 @@ pub struct SuiteNode {
 /// edges naturally answers "what else does this incident touch":
 ///
 ///   - `agent --DependsOn--> tool`  (agent is the leaf, tool is the root)
-///   - `decision_card --Approves--> vendor`  (decision is the approval root)
+///   - `decision_card --Approves--> vendor`  (vendor is the root)
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SuiteEdge {

@@ -20,13 +20,15 @@ impl IncidentCorrelator {
     ///  - Start from every `affected_documents` id (depth 0).
     ///  - At each step, walk **incoming** edges so we find "what depends on
     ///    this affected thing", not "what does this affected thing depend on."
-    ///  - Edge kinds we follow: `DependsOn`, `ApprovedBy`. `Mentions` is
+    ///  - Edge kinds we follow: `DependsOn`, `Approves`. `Mentions` is
     ///    informational and is NOT followed (would over-fan the plan).
     pub fn correlate(
         &self,
         graph: &SuiteGraph,
         incident: &IncidentCard,
     ) -> Result<RemediationPlan, CorrelationError> {
+        incident.validate_required_fields()?;
+        let severity = parse_severity(&incident.severity)?;
         // Validate every affected id exists in the graph.
         let mut seeds: Vec<NodeIndex> = Vec::with_capacity(incident.affected_documents.len());
         for id in &incident.affected_documents {
@@ -36,7 +38,6 @@ impl IncidentCorrelator {
             seeds.push(idx);
         }
 
-        let severity = parse_severity(&incident.severity);
         let mut visited: HashSet<NodeIndex> = HashSet::new();
         let mut queue: VecDeque<(NodeIndex, u32)> = VecDeque::new();
 
@@ -76,11 +77,10 @@ impl IncidentCorrelator {
         })
     }
 
-    /// Build a remediation plan **and** fire an `incident_correlated` event
-    /// to the audit-stream spine. Same semantics as [`correlate`] — the emit
-    /// is best-effort and never blocks the result. Use this when you want
-    /// AI incidents to land in the same hash-chained log that holds the
-    /// rest of the suite's governance events.
+    /// Build a remediation plan **and** attempt an `incident_correlated`
+    /// event. Same semantics as [`Self::correlate`] — emission is best-effort and
+    /// never blocks the result. This method does not confirm a durable audit
+    /// receipt; operators requiring one must check the destination service.
     ///
     /// Available only with the `audit-stream` feature.
     #[cfg(feature = "audit-stream")]
@@ -100,11 +100,9 @@ impl IncidentCorrelator {
                     serde_json::json!({
                         "incident_id": plan.incident_id,
                         "severity": incident.severity,
-                        "affected_documents": incident.affected_documents,
                         "affected_node_count": plan.affected_nodes.len(),
                         "max_urgency": max_urgency,
                         "has_page": plan.has_page(),
-                        "summary": plan.summary,
                     }),
                 )
                 .await;
@@ -115,14 +113,26 @@ impl IncidentCorrelator {
                     "incident_correlation_failed",
                     serde_json::json!({
                         "incident_id": incident.incident_id,
-                        "severity": incident.severity,
-                        "reason": err.to_string(),
+                        "reason_code": error_code(err),
                     }),
                 )
                 .await;
             }
         }
         outcome
+    }
+}
+
+#[cfg(feature = "audit-stream")]
+fn error_code(err: &CorrelationError) -> &'static str {
+    match err {
+        CorrelationError::InvalidIncident(_) => "invalid_incident",
+        CorrelationError::UnsupportedIncidentVersion(_) => "unsupported_incident_version",
+        CorrelationError::InvalidIncidentField(_) => "invalid_incident_field",
+        CorrelationError::EmptyAffectedDocuments => "empty_affected_documents",
+        CorrelationError::InvalidSeverity(_) => "invalid_severity",
+        CorrelationError::UnknownAffectedNode(_) => "unknown_affected_node",
+        CorrelationError::UnknownEdgeTarget(_) => "unknown_edge_target",
     }
 }
 
@@ -164,12 +174,13 @@ enum Severity {
     Critical,
 }
 
-fn parse_severity(raw: &str) -> Severity {
+fn parse_severity(raw: &str) -> Result<Severity, CorrelationError> {
     match raw.to_ascii_lowercase().trim() {
-        "critical" => Severity::Critical,
-        "high" => Severity::High,
-        "medium" | "moderate" => Severity::Medium,
-        _ => Severity::Low,
+        "critical" => Ok(Severity::Critical),
+        "high" => Ok(Severity::High),
+        "medium" | "moderate" => Ok(Severity::Medium),
+        "low" => Ok(Severity::Low),
+        _ => Err(CorrelationError::InvalidSeverity(raw.to_string())),
     }
 }
 
@@ -187,10 +198,11 @@ fn urgency_for(severity: Severity, depth: u32) -> Urgency {
 fn action_for(kind: NodeKind, depth: u32, severity: Severity) -> Action {
     match (kind, depth, severity) {
         (NodeKind::IncidentCard, _, _) => Action::Page,
-        // Directly affected nodes at depth 0 get more aggressive treatment.
-        (_, 0, Severity::Critical) => Action::Page,
         (NodeKind::DecisionCard, _, _) => Action::RecheckPolicy,
         (NodeKind::Vendor, _, _) => Action::RequestReview,
+        // Keep the specific follow-up action for decision/vendor nodes above;
+        // critical urgency and has_page() carry the paging signal.
+        (_, 0, Severity::Critical) => Action::Page,
         // Everything else (AEO, agent-card, tool-card) gets re-validated.
         (_, _, _) => Action::Revalidate,
     }
@@ -207,11 +219,14 @@ fn rationale_for(kind: NodeKind, depth: u32, summary: &str) -> String {
         NodeKind::AgentCard => format!(
             "Re-validate the agent-card and confirm refusal taxonomy still holds: {where_from}."
         ),
+        NodeKind::TutorCard => {
+            format!("Re-validate the tutor-card and its safety disclosures: {where_from}.")
+        }
         NodeKind::ToolCard => {
             format!("Re-validate the tool-card and audit recent invocations: {where_from}.")
         }
         NodeKind::DecisionCard => {
-            format!("Re-evaluate the PolicyBundle generated from this Decision Card. {where_from}.")
+            format!("Review any PolicyBundle derived from this Decision Card. {where_from}.")
         }
         NodeKind::Vendor => {
             format!("Request a fresh procurement review for this vendor. {where_from}.")
