@@ -10,11 +10,11 @@ use crate::model::NodeKind;
 pub enum Action {
     /// Re-fetch the doc and re-run validation. Use for upstream changes.
     Revalidate,
-    /// Force re-evaluation of any PolicyBundles derived from this card.
+    /// Recommend review of any PolicyBundles derived from this card.
     RecheckPolicy,
-    /// Mark the contract / decision deprecated; bring forward a migration plan.
+    /// Ask an operator to review the affected vendor or decision.
     RequestReview,
-    /// Page the on-call owner. Used when severity == "critical".
+    /// Suggest paging the on-call owner; this crate does not send pages.
     Page,
 }
 
@@ -72,11 +72,11 @@ impl RemediationPlan {
             .collect()
     }
 
-    /// Whether any node was flagged for paging.
+    /// Whether any action asks for a page or any node has critical urgency.
     #[must_use]
     pub fn has_page(&self) -> bool {
         self.affected_nodes
             .iter()
-            .any(|n| matches!(n.action, Action::Page))
+            .any(|n| matches!(n.action, Action::Page) || matches!(n.urgency, Urgency::Critical))
     }
 }

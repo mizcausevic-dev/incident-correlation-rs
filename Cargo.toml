@@ -1,14 +1,15 @@
 [package]
 name        = "incident-correlation"
-version     = "0.1.2"
+version     = "0.2.0"
 edition     = "2021"
 rust-version = "1.88"
-description = "Walks the Kinetic Gain Protocol Suite graph (AEO + agent-cards + tool-cards + decision-cards) starting from an AI Incident Card and emits a structured remediation plan. Optional audit-stream-py integration via the `audit-stream` feature."
+description = "Builds suggested remediation plans from a caller-supplied Suite graph and an Incident Card projection. Optional best-effort audit event."
 license     = "MIT"
 repository  = "https://github.com/mizcausevic-dev/incident-correlation-rs"
 homepage    = "https://kineticgain.com/"
 documentation = "https://docs.rs/incident-correlation"
 readme      = "README.md"
+include     = ["src/**", "tests/**", "examples/**", "benches/**", "README.md", "LICENSE"]
 keywords    = ["ai-incidents", "decision-intel", "graph", "kinetic-gain", "remediation"]
 categories  = ["data-structures", "asynchronous"]
 authors     = ["Miz Causevic <miz@kineticgain.com>"]

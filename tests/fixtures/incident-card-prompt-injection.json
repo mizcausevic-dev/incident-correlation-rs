@@ -1,0 +1,76 @@
+{
+  "incident_card_version": "0.1",
+  "incident": {
+    "id": "INC-2026-05-03-kineticgain-002",
+    "title": "Tier-1 customer support agent issued refund via prompt-injection in ticket body",
+    "severity": "high",
+    "categories": ["prompt_injection_success", "tool_abuse", "refusal_taxonomy_violation"],
+    "discovered_at": "2026-05-03T11:20:00Z",
+    "occurred_at": "2026-05-03T07:42:00Z",
+    "disclosed_at": "2026-05-05T17:00:00Z",
+    "status": "mitigated"
+  },
+  "affected": {
+    "vendor": "Kinetic Gain",
+    "products": ["Tier-1 Customer Support Agent"],
+    "versions": ["2.4.1"],
+    "agent_card_uris": [
+      "https://kineticgain.com/.well-known/agents/customer-support-tier-1.json"
+    ],
+    "tool_card_uris": [
+      "https://billing.kineticgain.com/.well-known/mcp-tools/billing-lookup.json"
+    ],
+    "affected_user_count": { "kind": "approximate", "count": 4 },
+    "affected_populations": ["paying-customers-us-east"]
+  },
+  "summary": "A crafted support ticket containing embedded instructions in a base64-encoded log block caused the Tier-1 agent to invoke the ticket-create tool with a refund-issuance template instead of forwarding to a human. The Agent Card declares refund_request as escalate_to_human in its refusal_taxonomy; the agent's adherence to that taxonomy failed under indirect prompt injection. Four refund tickets were created and approved before detection. All four were re-reviewed; two were legitimate, two were reversed.",
+  "root_cause": {
+    "category": "prompt_injection",
+    "description": "The base64-decoded payload in the ticket's log_attachment field included a string interpreted by the model as a system instruction. The decoder ran before the safety classifier, so the decoded text reached the planning step without injection-detection screening."
+  },
+  "harm": {
+    "severity_justification": "Direct financial impact via tool_abuse + refusal_taxonomy_violation. Two unauthorized refunds were issued (later reversed). High rather than critical because no PII was disclosed and no minors were affected.",
+    "manifested": true,
+    "narrative": "Total reversed refund volume: $1,247.00. Customer-facing impact: the two affected customers received a follow-up apology and a $50 credit for the reversal inconvenience."
+  },
+  "mitigation": {
+    "actions_taken": [
+      "Moved log_attachment decoding to a sandboxed pre-classifier pass that strips system-instruction-like content before reaching the planning step.",
+      "Added 47 new regression tests covering known base64 / hex / unicode-obfuscation injection patterns.",
+      "Tightened the billing-lookup MCP Tool Card's refusal_modes to include suspicious_payload, with automated detection.",
+      "Required human-in-loop approval on all refund-template invocations until v2.5.0 ships the permanent fix."
+    ],
+    "permanent_fix": false,
+    "rollout_status": "in_progress",
+    "workaround_for_users": "No customer action required. All refund-template invocations are now human-gated."
+  },
+  "evidence": {
+    "evidence_uris": [
+      "https://kineticgain.com/.well-known/evidence/INC-2026-05-03-kineticgain-002-ev1.json"
+    ],
+    "prompt_provenance_uri": "https://kineticgain.com/.well-known/prompts/customer-support-system-2.4.1.json",
+    "reproduction_uri": "https://github.com/kineticgain/internal-redteam-corpus/tree/main/INC-2026-05-03-kineticgain-002"
+  },
+  "references": [
+    {
+      "type": "customer_notice",
+      "title": "Customer Notice: Tier-1 Support Agent Refund Tickets — May 3 2026",
+      "uri": "https://kineticgain.com/notices/2026-05-05-support-agent-refunds.html",
+      "published_at": "2026-05-05T17:00:00Z"
+    }
+  ],
+  "regulatory": {
+    "not_reportable_justification": "No PII disclosed; no GDPR / FERPA / COPPA subjects involved. Financial impact is within the vendor's authority to refund / reverse."
+  },
+  "published_by": {
+    "name": "Kinetic Gain — Trust & Safety",
+    "role": "vendor",
+    "contact_uri": "mailto:trust-safety@kineticgain.com"
+  },
+  "published_at": "2026-05-05T17:00:00Z",
+  "last_updated_at": "2026-05-08T10:00:00Z",
+  "revision": {
+    "number": 2,
+    "change_summary": "Status changed from active to mitigated; appended Tool Card refusal_modes update; added regression-corpus reproduction URI."
+  }
+}

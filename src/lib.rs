@@ -1,7 +1,7 @@
 //! # incident-correlation
 //!
-//! Walks the Kinetic Gain Protocol Suite document graph starting from an
-//! AI Incident Card and emits a structured remediation plan.
+//! Walks a caller-supplied Kinetic Gain Protocol Suite document graph starting
+//! from an AI Incident Card and emits a suggested remediation plan.
 //!
 //! ## What it answers
 //!
@@ -12,8 +12,8 @@
 //!
 //!  - Which **agent-cards** depend on the affected tool?
 //!  - Which **decision-cards** approved the affected vendor?
-//!  - Which **AEO entities** declare the affected entity in their authority chain?
-//!  - Which **active conditions** on those decisions might now be in breach?
+//!  - Which nodes depend on the affected documents through `DependsOn` and
+//!    `Approves` edges?
 //!
 //! `IncidentCorrelator::correlate` walks the graph and returns a
 //! [`RemediationPlan`] with each affected node + a suggested action.
@@ -21,7 +21,7 @@
 //! ## Design
 //!
 //! - The graph is a `petgraph::Graph` of [`SuiteNode`]s.
-//! - Edges are typed ([`SuiteEdge::DependsOn`], [`SuiteEdge::ApprovedBy`],
+//! - Edges are typed ([`SuiteEdge::DependsOn`], [`SuiteEdge::Approves`],
 //!   [`SuiteEdge::Mentions`]), so the correlator can answer "what depends on
 //!   X" with one BFS over a typed edge filter.
 //! - The whole pipeline is synchronous because graph work doesn't need an
@@ -32,10 +32,13 @@
 //! - **[procurement-decision-api](https://github.com/mizcausevic-dev/procurement-decision-api)** —
 //!   the Decision Cards this crate walks across.
 //! - **[policy-as-code-engine](https://github.com/mizcausevic-dev/policy-as-code-engine)** —
-//!   the remediation plan can drive `force_recheck` calls against the
-//!   PolicyBundles those cards produce.
+//!   a `RecheckPolicy` recommendation can prompt operator review of the
+//!   PolicyBundles those cards produced.
 //! - **[aeo-validator-service](https://github.com/mizcausevic-dev/aeo-validator-service)** —
-//!   re-validate the affected AEO docs with one call each.
+//!   an operator can recheck an affected AEO doc if a watch exists.
+//!
+//! This crate does not fetch or validate documents, verify graph completeness,
+//! execute actions, or call those services.
 
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
@@ -62,4 +65,4 @@ pub use correlator::IncidentCorrelator;
 pub use error::CorrelationError;
 pub use graph::{SuiteEdge, SuiteGraph, SuiteNode};
 pub use model::{IncidentCard, NodeKind};
-pub use plan::{Action, AffectedNode, RemediationPlan};
+pub use plan::{Action, AffectedNode, RemediationPlan, Urgency};
